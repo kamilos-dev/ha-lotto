@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotto",
+        "description": "Enter your Lotto Open API key (developers.lotto.pl). Request one by emailing openapi@totalizator.pl.",
+        "data": {
+          "api_key": "API key (Secret)",
+          "poll_interval_hours": "How often to check results (hours)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The API key was rejected.",
+      "cannot_connect": "Could not connect to the Lotto Open API."
+    },
+    "abort": {
+      "already_configured": "Lotto is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lotto settings",
+        "data": {
+          "api_key": "API key (Secret)",
+          "poll_interval_hours": "How often to check results (hours)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The API key was rejected.",
+      "cannot_connect": "Could not connect to the Lotto Open API."
+    }
+  }
+}

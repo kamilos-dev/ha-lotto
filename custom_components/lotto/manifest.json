@@ -1,0 +1,11 @@
+{
+  "domain": "lotto",
+  "name": "Lotto",
+  "codeowners": ["@kamilos-dev"],
+  "config_flow": true,
+  "documentation": "https://github.com/kamilos-dev/ha-lotto",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/kamilos-dev/ha-lotto/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
