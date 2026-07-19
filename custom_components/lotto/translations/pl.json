@@ -3,16 +3,16 @@
     "step": {
       "user": {
         "title": "Lotto",
-        "description": "Wprowadź klucz API do Lotto Open API (developers.lotto.pl). Klucz można uzyskać, pisząc na openapi@totalizator.pl.",
+        "description": "Klucz API jest opcjonalny. Zostaw puste pole, aby korzystać od razu z darmowego, nieoficjalnego źródła wyników z lotto.pl. Wpisz klucz do Lotto Open API (developers.lotto.pl, można uzyskać pisząc na openapi@totalizator.pl), aby zamiast tego korzystać z oficjalnego API.",
         "data": {
-          "api_key": "Klucz API (Secret)",
+          "api_key": "Klucz API (Secret) — opcjonalnie",
           "poll_interval_hours": "Co ile godzin sprawdzać wyniki"
         }
       }
     },
     "error": {
       "invalid_auth": "Nieprawidłowy klucz API.",
-      "cannot_connect": "Nie udało się połączyć z Lotto Open API."
+      "cannot_connect": "Nie udało się połączyć ze źródłem wyników losowań."
     },
     "abort": {
       "already_configured": "Integracja Lotto jest już skonfigurowana."
@@ -23,14 +23,14 @@
       "init": {
         "title": "Ustawienia Lotto",
         "data": {
-          "api_key": "Klucz API (Secret)",
+          "api_key": "Klucz API (Secret) — opcjonalnie",
           "poll_interval_hours": "Co ile godzin sprawdzać wyniki"
         }
       }
     },
     "error": {
       "invalid_auth": "Nieprawidłowy klucz API.",
-      "cannot_connect": "Nie udało się połączyć z Lotto Open API."
+      "cannot_connect": "Nie udało się połączyć ze źródłem wyników losowań."
     }
   }
 }

@@ -17,7 +17,7 @@ from .const import (
     MAX_POLL_INTERVAL_HOURS,
     MIN_POLL_INTERVAL_HOURS,
 )
-from .lotto_api import LottoApiAuthError, LottoApiClient, LottoApiError
+from .lotto_api import LottoApiAuthError, LottoApiError, create_client
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     defaults = defaults or {}
     return vol.Schema(
         {
-            vol.Required(CONF_API_KEY, default=defaults.get(CONF_API_KEY, "")): str,
+            vol.Optional(CONF_API_KEY, default=defaults.get(CONF_API_KEY, "")): str,
             vol.Optional(
                 CONF_POLL_INTERVAL_HOURS,
                 default=defaults.get(CONF_POLL_INTERVAL_HOURS, DEFAULT_POLL_INTERVAL_HOURS),
@@ -35,8 +35,26 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     )
 
 
+async def _async_validate(hass: Any, user_input: dict[str, Any]) -> dict[str, str]:
+    """Verify the configured provider (Open API key, or the public fallback) works."""
+    session = async_get_clientsession(hass)
+    client = create_client(session, user_input.get(CONF_API_KEY) or None)
+    try:
+        await client.async_verify_connection()
+    except LottoApiAuthError:
+        return {"base": "invalid_auth"}
+    except LottoApiError:
+        return {"base": "cannot_connect"}
+    return {}
+
+
 class LottoConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Single-instance config flow: asks for the Lotto Open API key."""
+    """Single-instance config flow.
+
+    The API key is optional: leave it blank to use the free, unofficial
+    lotto.pl results endpoint immediately; fill it in to use the official
+    Lotto Open API instead.
+    """
 
     VERSION = 1
 
@@ -46,22 +64,11 @@ class LottoConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = await self._async_validate(user_input)
+            errors = await _async_validate(self.hass, user_input)
             if not errors:
                 return self.async_create_entry(title="Lotto", data=user_input)
 
         return self.async_show_form(step_id="user", data_schema=_schema(user_input), errors=errors)
-
-    async def _async_validate(self, user_input: dict[str, Any]) -> dict[str, str]:
-        session = async_get_clientsession(self.hass)
-        client = LottoApiClient(session, user_input[CONF_API_KEY])
-        try:
-            await client.async_verify_api_key()
-        except LottoApiAuthError:
-            return {"base": "invalid_auth"}
-        except LottoApiError:
-            return {"base": "cannot_connect"}
-        return {}
 
     @staticmethod
     @callback
@@ -80,15 +87,7 @@ class LottoOptionsFlow(OptionsFlow):
         current = {**self._config_entry.data, **self._config_entry.options}
 
         if user_input is not None:
-            session = async_get_clientsession(self.hass)
-            client = LottoApiClient(session, user_input[CONF_API_KEY])
-            try:
-                await client.async_verify_api_key()
-            except LottoApiAuthError:
-                errors["base"] = "invalid_auth"
-            except LottoApiError:
-                errors["base"] = "cannot_connect"
-
+            errors = await _async_validate(self.hass, user_input)
             if not errors:
                 return self.async_create_entry(title="", data=user_input)
 

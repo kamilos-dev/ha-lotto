@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import EVENT_UPDATED, EVENT_WIN, GAME_EUROJACKPOT, RESULTS_FETCH_SIZE, STATUS_ACTIVE, STATUS_EXPIRED
-from .lotto_api import DrawResult, LottoApiClient, LottoApiError
+from .lotto_api import DrawResult, LottoApiError, LottoOpenApiClient, LottoPublicApiClient
 from .rules import match_draw
 from .store import LottoStore
 
@@ -24,7 +24,7 @@ class LottoCoordinator(DataUpdateCoordinator[list[dict]]):
         self,
         hass: HomeAssistant,
         store: LottoStore,
-        api_client: LottoApiClient,
+        api_client: LottoOpenApiClient | LottoPublicApiClient,
         update_interval_hours: int,
     ) -> None:
         super().__init__(
@@ -41,19 +41,22 @@ class LottoCoordinator(DataUpdateCoordinator[list[dict]]):
         if not active_coupons:
             return self.store.coupons
 
-        results_by_game: dict[str, list[DrawResult]] = {}
-        for game_type in {c["game_type"] for c in active_coupons}:
-            try:
-                results_by_game[game_type] = await self.api_client.async_get_last_results(
-                    game_type, RESULTS_FETCH_SIZE
-                )
-            except LottoApiError as err:
-                _LOGGER.warning("Nie udało się pobrać wyników dla %s: %s", game_type, err)
-                results_by_game[game_type] = []
+        # LottoPublicApiClient can fetch exactly the draws a coupon cares
+        # about (anchored to its first_draw_date), which can't miss old
+        # draws the way "last N results" can. LottoOpenApiClient only
+        # offers the latter, so results are batched once per game type and
+        # shared across that game's coupons instead.
+        supports_date_query = hasattr(self.api_client, "async_get_results_from")
+        game_type_cache: dict[str, list[DrawResult]] = {}
 
         any_changed = False
         for coupon in active_coupons:
-            if self._async_check_coupon(coupon, results_by_game.get(coupon["game_type"], [])):
+            results = await self._async_fetch_results_for_coupon(
+                coupon, supports_date_query, game_type_cache
+            )
+            if results is None:
+                continue
+            if self._async_check_coupon(coupon, results):
                 any_changed = True
                 await self.store.async_update(coupon)
 
@@ -61,6 +64,25 @@ class LottoCoordinator(DataUpdateCoordinator[list[dict]]):
             self.hass.bus.async_fire(EVENT_UPDATED, {})
 
         return self.store.coupons
+
+    async def _async_fetch_results_for_coupon(
+        self, coupon: dict, supports_date_query: bool, game_type_cache: dict[str, list[DrawResult]]
+    ) -> list[DrawResult] | None:
+        game_type = coupon["game_type"]
+        try:
+            if supports_date_query:
+                first_draw_date = date.fromisoformat(coupon["first_draw_date"])
+                return await self.api_client.async_get_results_from(
+                    game_type, first_draw_date, coupon["draws_total"]
+                )
+            if game_type not in game_type_cache:
+                game_type_cache[game_type] = await self.api_client.async_get_last_results(
+                    game_type, RESULTS_FETCH_SIZE
+                )
+            return game_type_cache[game_type]
+        except LottoApiError as err:
+            _LOGGER.warning("Nie udało się pobrać wyników dla %s: %s", game_type, err)
+            return None
 
     def _async_check_coupon(self, coupon: dict, results: list[DrawResult]) -> bool:
         """Check one coupon against newly fetched results, mutating it in place."""
