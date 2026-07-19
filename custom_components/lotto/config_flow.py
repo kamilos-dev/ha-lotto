@@ -8,6 +8,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .const import (
     CONF_API_KEY,
@@ -30,7 +35,17 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             vol.Optional(
                 CONF_POLL_INTERVAL_HOURS,
                 default=defaults.get(CONF_POLL_INTERVAL_HOURS, DEFAULT_POLL_INTERVAL_HOURS),
-            ): vol.All(int, vol.Range(min=MIN_POLL_INTERVAL_HOURS, max=MAX_POLL_INTERVAL_HOURS)),
+            ): vol.All(
+                NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_POLL_INTERVAL_HOURS,
+                        max=MAX_POLL_INTERVAL_HOURS,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Coerce(int),
+            ),
         }
     )
 
