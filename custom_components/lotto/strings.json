@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Lotto",
-        "description": "Klucz API jest opcjonalny. Zostaw puste pole, aby korzystać od razu z darmowego, nieoficjalnego źródła wyników z lotto.pl. Wpisz klucz do Lotto Open API (developers.lotto.pl, można uzyskać pisząc na openapi@totalizator.pl), aby zamiast tego korzystać z oficjalnego API.",
+        "description": "Klucz API jest opcjonalny. Zostaw puste pole, aby korzystać z darmowego, nieoficjalnego źródła wyników z lotto.pl — uwaga: bywa blokowane przez zabezpieczenia antybotowe (Cloudflare) na niektórych sieciach, co nie zawsze da się wykryć od razu przy dodawaniu integracji. Wpisz klucz do Lotto Open API (developers.lotto.pl, można uzyskać pisząc na openapi@totalizator.pl), aby korzystać ze stabilniejszego, oficjalnego API.",
         "data": {
           "api_key": "Klucz API (Secret) — opcjonalnie",
           "poll_interval_hours": "Co ile godzin sprawdzać wyniki"

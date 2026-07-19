@@ -51,16 +51,30 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 
 
 async def _async_validate(hass: Any, user_input: dict[str, Any]) -> dict[str, str]:
-    """Verify the configured provider (Open API key, or the public fallback) works."""
+    """Verify a configured Open API key works.
+
+    The key-free public provider is deliberately NOT pre-verified here: it's
+    known to be blocked by lotto.pl's Cloudflare protection on some networks
+    (requires a browser-obtained cf_clearance cookie plus a per-page
+    request-token that a background HTTP client cannot reproduce), and that
+    can't be told apart from a merely transient failure at setup time. Rather
+    than hard-blocking installation on a check we can't trust, setup is
+    allowed to proceed; the coordinator retries on its own schedule and logs
+    the real HTTP status/error on every attempt.
+    """
+    api_key = user_input.get(CONF_API_KEY) or None
+    if not api_key:
+        return {}
+
     session = async_get_clientsession(hass)
-    client = create_client(session, user_input.get(CONF_API_KEY) or None)
+    client = create_client(session, api_key)
     try:
         await client.async_verify_connection()
     except LottoApiAuthError as err:
         _LOGGER.warning("Weryfikacja klucza API nie powiodła się: %s", err)
         return {"base": "invalid_auth"}
     except LottoApiError as err:
-        _LOGGER.warning("Nie udało się połączyć ze źródłem wyników (%s): %s", type(client).__name__, err)
+        _LOGGER.warning("Nie udało się połączyć z Lotto Open API: %s", err)
         return {"base": "cannot_connect"}
     return {}
 

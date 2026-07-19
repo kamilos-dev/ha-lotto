@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Lotto",
-        "description": "The API key is optional. Leave it blank to use the free, unofficial lotto.pl results feed right away. Enter a Lotto Open API key (developers.lotto.pl, request one by emailing openapi@totalizator.pl) to use the official API instead.",
+        "description": "The API key is optional. Leave it blank to use the free, unofficial lotto.pl results feed - note: it's sometimes blocked by anti-bot protection (Cloudflare) on some networks, which isn't always detectable right when you add the integration. Enter a Lotto Open API key (developers.lotto.pl, request one by emailing openapi@totalizator.pl) for the more reliable official API instead.",
         "data": {
           "api_key": "API key (Secret) — optional",
           "poll_interval_hours": "How often to check results (hours)"
