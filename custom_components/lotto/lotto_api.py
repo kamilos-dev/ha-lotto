@@ -77,14 +77,35 @@ def _parse_draw_date(raw: str) -> date:
 async def _fetch_json(
     session: ClientSession, url: str, headers: dict[str, str], params: dict[str, Any]
 ) -> tuple[int, Any]:
-    """GET `url` and return (status, parsed_json_or_None)."""
+    """GET `url` and return (status, parsed_json_or_None).
+
+    lotto.pl's anti-bot protection has been observed serving an HTML
+    challenge page with a plain HTTP 200, so a 200 status alone doesn't
+    guarantee the body is JSON - that failure mode is logged with a body
+    snippet (visible in Settings -> System -> Logs) and raised as
+    LottoApiError instead of leaking a raw JSONDecodeError.
+    """
     try:
         async with asyncio.timeout(REQUEST_TIMEOUT):
             async with session.get(url, headers=headers, params=params) as resp:
-                if resp.status != 200:
-                    return resp.status, None
-                return resp.status, await resp.json(content_type=None)
+                status = resp.status
+                if status != 200:
+                    body = await resp.text()
+                    _LOGGER.warning("GET %s -> HTTP %s: %s", url, status, body[:300])
+                    return status, None
+                try:
+                    return status, await resp.json(content_type=None)
+                except ValueError as err:
+                    body = await resp.text()
+                    _LOGGER.warning(
+                        "GET %s zwróciło HTTP 200, ale treść nie jest poprawnym JSON-em "
+                        "(prawdopodobnie strona z zabezpieczeniem antybotowym zamiast wyników): %s",
+                        url,
+                        body[:300],
+                    )
+                    raise LottoApiError(f"{url} zwróciło HTTP 200 z nieprawidłowym JSON-em") from err
     except (ClientError, TimeoutError) as err:
+        _LOGGER.warning("Błąd komunikacji z %s: %s", url, err)
         raise LottoApiError(f"Błąd komunikacji z {url}: {err}") from err
 
 

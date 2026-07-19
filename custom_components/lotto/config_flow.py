@@ -56,9 +56,11 @@ async def _async_validate(hass: Any, user_input: dict[str, Any]) -> dict[str, st
     client = create_client(session, user_input.get(CONF_API_KEY) or None)
     try:
         await client.async_verify_connection()
-    except LottoApiAuthError:
+    except LottoApiAuthError as err:
+        _LOGGER.warning("Weryfikacja klucza API nie powiodła się: %s", err)
         return {"base": "invalid_auth"}
-    except LottoApiError:
+    except LottoApiError as err:
+        _LOGGER.warning("Nie udało się połączyć ze źródłem wyników (%s): %s", type(client).__name__, err)
         return {"base": "cannot_connect"}
     return {}
 
