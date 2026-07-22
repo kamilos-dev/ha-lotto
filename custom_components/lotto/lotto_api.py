@@ -1,18 +1,13 @@
-"""Async clients for fetching Lotto/EuroJackpot draw results.
+"""Async client for fetching Lotto/EuroJackpot draw results from the
+official Lotto Open API (developers.lotto.pl). Requires a free API key
+requested from Totalizator Sportowy (openapi@totalizator.pl).
 
-Two providers are supported:
-
-- `LottoOpenApiClient`: the official Lotto Open API (developers.lotto.pl).
-  Requires a free API key requested from Totalizator Sportowy
-  (openapi@totalizator.pl).
-- `LottoPublicApiClient`: the unofficial, unauthenticated JSON endpoint that
-  powers the public results page on lotto.pl. No key needed, but it's not a
-  documented contract - it could change or start blocking non-browser
-  traffic without notice.
-
-`create_client()` picks between them based on whether an API key was
-configured. Everything specific to either wire format lives in this one
-file so drift only needs a fix here.
+An earlier version also supported an unofficial, unauthenticated public
+endpoint as a key-free fallback, but it's Cloudflare-protected on some
+networks in a way a background HTTP client can't get past (needs a
+browser-obtained cf_clearance cookie plus a per-page request-token) - it
+was removed rather than kept as a provider that silently never works for
+some users.
 """
 from __future__ import annotations
 
@@ -29,21 +24,7 @@ from .const import GAME_EUROJACKPOT
 _LOGGER = logging.getLogger(__name__)
 
 OPEN_API_BASE_URL = "https://developers.lotto.pl/api/open/v1"
-PUBLIC_API_BY_GAMETYPE_URL = "https://www.lotto.pl/api/lotteries/draw-results/by-gametype"
-PUBLIC_API_BY_COLLECTION_URL = "https://www.lotto.pl/api/lotteries/draw-results/by-collection-per-game"
 REQUEST_TIMEOUT = 15
-
-# The public endpoint is the same one the lotto.pl website's own frontend
-# calls; some requests without browser-like headers get served an HTML
-# challenge page instead of JSON, so these are sent defensively.
-PUBLIC_API_HEADERS = {
-    "Accept": "application/json, text/plain, */*",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://www.lotto.pl/wyniki-losowan/lotto",
-}
 
 
 class LottoApiError(Exception):
@@ -109,10 +90,9 @@ async def _fetch_json(
 
 
 def _parse_draw_items(game_type: str, items: list[Any]) -> list[DrawResult]:
-    """Parse the shared item shape used by the Open API and both public
-    lotto.pl endpoints (confirmed identical against a real Open API key:
-    the initial assumption of a flat top-level `resultsJson` field was
-    wrong and produced KeyErrors on every real draw).
+    """Parse the Open API's response item shape (confirmed against a real
+    API key: the initial assumption of a flat top-level `resultsJson` field
+    was wrong and produced KeyErrors on every real draw).
 
     Each `item` bundles every game drawn at that date/time together (e.g.
     Lotto + LottoPlus, or EkstraPensja + EkstraPremia) under `results`, so
@@ -203,66 +183,3 @@ class LottoOpenApiClient:
                     break
 
         return _parse_draw_items(game_type, items or [])
-
-
-class LottoPublicApiClient:
-    """Client for the unofficial, unauthenticated lotto.pl results endpoints.
-
-    Used by default when no Open API key is configured.
-    """
-
-    def __init__(self, session: ClientSession) -> None:
-        self._session = session
-
-    async def async_verify_connection(self) -> None:
-        await self.async_get_last_results(GAME_EUROJACKPOT, size=1)
-
-    async def async_get_last_results(self, game_type: str, size: int = 20) -> list[DrawResult]:
-        """Fetch the `size` most recent draws for `game_type`."""
-        params = {
-            "game": game_type,
-            "index": 1,
-            "size": size,
-            "sort": "drawDate",
-            "order": "DESC",
-            "initialSize": size,
-        }
-        status, payload = await _fetch_json(
-            self._session, PUBLIC_API_BY_GAMETYPE_URL, PUBLIC_API_HEADERS, params
-        )
-        if status != 200:
-            raise LottoApiError(f"lotto.pl zwróciło błąd HTTP {status}")
-        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
-            raise LottoApiError("lotto.pl zwróciło nieoczekiwaną odpowiedź (nie JSON?)")
-
-        return _parse_draw_items(game_type, payload["items"])
-
-    async def async_get_results_from(
-        self, game_type: str, from_date: date, quantity: int
-    ) -> list[DrawResult]:
-        """Fetch up to `quantity` draws for `game_type` on or after `from_date`.
-
-        Maps directly onto a coupon's (first_draw_date, draws_total) - unlike
-        async_get_last_results this can't miss old draws regardless of how
-        long Home Assistant was offline, since it's anchored to a date
-        instead of "the N most recent".
-        """
-        params = {"gameType": game_type, "drawDate": from_date.isoformat(), "quantity": quantity}
-        status, payload = await _fetch_json(
-            self._session, PUBLIC_API_BY_COLLECTION_URL, PUBLIC_API_HEADERS, params
-        )
-        if status != 200:
-            raise LottoApiError(f"lotto.pl zwróciło błąd HTTP {status}")
-        if not isinstance(payload, list):
-            raise LottoApiError("lotto.pl zwróciło nieoczekiwaną odpowiedź (nie JSON?)")
-
-        return _parse_draw_items(game_type, payload)
-
-
-def create_client(
-    session: ClientSession, api_key: str | None
-) -> LottoOpenApiClient | LottoPublicApiClient:
-    """Pick the Open API client if a key was configured, else the public one."""
-    if api_key:
-        return LottoOpenApiClient(session, api_key)
-    return LottoPublicApiClient(session)

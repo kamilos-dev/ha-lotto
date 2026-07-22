@@ -13,7 +13,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import LottoCoordinator
-from .lotto_api import create_client
+from .lotto_api import LottoOpenApiClient
 from .panel import async_setup_panel, async_unload_panel
 from .store import LottoStore
 from .websocket_api import async_register_websocket_api
@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_load()
 
     session = async_get_clientsession(hass)
-    api_client = create_client(session, settings.get(CONF_API_KEY) or None)
+    api_client = LottoOpenApiClient(session, settings[CONF_API_KEY])
 
     coordinator = LottoCoordinator(
         hass,

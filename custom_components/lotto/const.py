@@ -18,14 +18,12 @@ GAME_LOTTO = "Lotto"
 GAME_EUROJACKPOT = "EuroJackpot"
 GAME_TYPES = [GAME_LOTTO, GAME_EUROJACKPOT]
 
-# How many most-recent draws to fetch per game type on each poll when the
-# provider can't be queried by date (LottoOpenApiClient only - the default
-# LottoPublicApiClient fetches exactly each coupon's own draw window
-# instead). Sized generously because LottoOpenApiClient's primary endpoint
-# (last-results-per-game) may not exist on every API version, in which case
-# it falls back to an endpoint confirmed NOT to filter by game type - a
-# request for "Lotto" can come back full of unrelated, high-frequency games
-# like Keno, so a small size risks missing Lotto/EuroJackpot draws entirely.
+# How many most-recent draws to fetch per game type on each poll. Sized
+# generously because the primary endpoint (last-results-per-game) may not
+# exist on every API version, in which case it falls back to an endpoint
+# confirmed NOT to filter by game type server-side - a request for "Lotto"
+# can come back full of unrelated, high-frequency games like Keno, so a
+# small size risks missing Lotto/EuroJackpot draws entirely.
 RESULTS_FETCH_SIZE = 100
 
 # Coupon status

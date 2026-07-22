@@ -22,7 +22,7 @@ from .const import (
     MAX_POLL_INTERVAL_HOURS,
     MIN_POLL_INTERVAL_HOURS,
 )
-from .lotto_api import LottoApiAuthError, LottoApiError, create_client
+from .lotto_api import LottoApiAuthError, LottoApiError, LottoOpenApiClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     defaults = defaults or {}
     return vol.Schema(
         {
-            vol.Optional(CONF_API_KEY, default=defaults.get(CONF_API_KEY, "")): str,
+            vol.Required(CONF_API_KEY, default=defaults.get(CONF_API_KEY, "")): str,
             vol.Optional(
                 CONF_POLL_INTERVAL_HOURS,
                 default=defaults.get(CONF_POLL_INTERVAL_HOURS, DEFAULT_POLL_INTERVAL_HOURS),
@@ -51,23 +51,9 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 
 
 async def _async_validate(hass: Any, user_input: dict[str, Any]) -> dict[str, str]:
-    """Verify a configured Open API key works.
-
-    The key-free public provider is deliberately NOT pre-verified here: it's
-    known to be blocked by lotto.pl's Cloudflare protection on some networks
-    (requires a browser-obtained cf_clearance cookie plus a per-page
-    request-token that a background HTTP client cannot reproduce), and that
-    can't be told apart from a merely transient failure at setup time. Rather
-    than hard-blocking installation on a check we can't trust, setup is
-    allowed to proceed; the coordinator retries on its own schedule and logs
-    the real HTTP status/error on every attempt.
-    """
-    api_key = user_input.get(CONF_API_KEY) or None
-    if not api_key:
-        return {}
-
+    """Verify the configured Open API key works."""
     session = async_get_clientsession(hass)
-    client = create_client(session, api_key)
+    client = LottoOpenApiClient(session, user_input[CONF_API_KEY])
     try:
         await client.async_verify_connection()
     except LottoApiAuthError as err:
@@ -80,12 +66,7 @@ async def _async_validate(hass: Any, user_input: dict[str, Any]) -> dict[str, st
 
 
 class LottoConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Single-instance config flow.
-
-    The API key is optional: leave it blank to use the free, unofficial
-    lotto.pl results endpoint immediately; fill it in to use the official
-    Lotto Open API instead.
-    """
+    """Single-instance config flow: asks for the Lotto Open API key."""
 
     VERSION = 1
 

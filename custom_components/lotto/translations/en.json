@@ -3,16 +3,16 @@
     "step": {
       "user": {
         "title": "Lotto",
-        "description": "The API key is optional. Leave it blank to use the free, unofficial lotto.pl results feed - note: it's sometimes blocked by anti-bot protection (Cloudflare) on some networks, which isn't always detectable right when you add the integration. Enter a Lotto Open API key (developers.lotto.pl, request one by emailing openapi@totalizator.pl) for the more reliable official API instead.",
+        "description": "Enter your Lotto Open API key (developers.lotto.pl). Request one by emailing openapi@totalizator.pl.",
         "data": {
-          "api_key": "API key (Secret) — optional",
+          "api_key": "API key (Secret)",
           "poll_interval_hours": "How often to check results (hours)"
         }
       }
     },
     "error": {
       "invalid_auth": "The API key was rejected.",
-      "cannot_connect": "Could not connect to the results provider."
+      "cannot_connect": "Could not connect to the Lotto Open API."
     },
     "abort": {
       "already_configured": "Lotto is already configured."
@@ -23,14 +23,14 @@
       "init": {
         "title": "Lotto settings",
         "data": {
-          "api_key": "API key (Secret) — optional",
+          "api_key": "API key (Secret)",
           "poll_interval_hours": "How often to check results (hours)"
         }
       }
     },
     "error": {
       "invalid_auth": "The API key was rejected.",
-      "cannot_connect": "Could not connect to the results provider."
+      "cannot_connect": "Could not connect to the Lotto Open API."
     }
   }
 }

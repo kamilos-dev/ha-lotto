@@ -62,9 +62,9 @@ OPEN_API_MIXED_GAMES_SAMPLE = [
     },
 ]
 
-# A real response from lotto.pl's by-date-per-game endpoint, pasted by the
-# user - locks in the (resultsJson=main numbers, specialResults=Euro
-# numbers) shape for EuroJackpot as a regression guard.
+# A real lotto.pl envelope response for EuroJackpot, pasted by the user -
+# locks in the (resultsJson=main numbers, specialResults=Euro numbers)
+# shape as a regression guard.
 EUROJACKPOT_SAMPLE = {
     "items": [
         {
@@ -190,10 +190,10 @@ LEGACY_URL = "https://developers.lotto.pl/api/open/v1/lotteries/draw-results/las
 
 
 async def test_open_api_parses_real_mixed_game_envelope():
-    """The Open API's last-results-per-game endpoint returns the same
-    enveloped shape as the public endpoints, filtered client-side by
-    _parse_draw_items same as everywhere else - this is the exact payload
-    shape that originally caused 'resultsJson' KeyErrors on every draw."""
+    """The Open API's last-results-per-game endpoint wraps each draw in an
+    envelope with a nested `results` list, filtered client-side by
+    _parse_draw_items - this is the exact payload shape that originally
+    caused 'resultsJson' KeyErrors on every draw."""
     session = RoutedFakeSession(
         {PER_GAME_URL: FakeResponse(200, json.dumps(OPEN_API_MIXED_GAMES_SAMPLE))}
     )
