@@ -4,6 +4,7 @@ These don't need the `hass` fixture - _fetch_json only needs something
 that quacks like an aiohttp ClientSession.
 """
 import json
+from datetime import date
 
 import pytest
 
@@ -229,3 +230,62 @@ async def test_open_api_rejects_bad_key():
 
     with pytest.raises(LottoApiAuthError):
         await client.async_get_last_results("Lotto")
+
+
+COLLECTION_URL = "https://developers.lotto.pl/api/open/v1/lotteries/draw-results/by-collection-per-game"
+
+# The exact envelope shape the user confirmed live on the public site for
+# by-collection-per-game: dates move FORWARD from the requested `drawDate`
+# (a lower bound), unlike by-date-per-game which walks backward from it.
+FORWARD_LOOKING_SAMPLE = [
+    {
+        "drawSystemId": 7373,
+        "drawDate": "2026-07-02T22:00:00Z",
+        "gameType": "Lotto",
+        "results": [
+            {"gameType": "Lotto", "resultsJson": [30, 34, 11, 23, 8, 10], "specialResults": []},
+        ],
+    },
+    {
+        "drawSystemId": 7374,
+        "drawDate": "2026-07-04T22:00:00Z",
+        "gameType": "Lotto",
+        "results": [
+            {"gameType": "Lotto", "resultsJson": [13, 30, 11, 36, 26, 49], "specialResults": []},
+        ],
+    },
+]
+
+
+async def test_open_api_get_results_from_uses_collection_endpoint():
+    session = RoutedFakeSession(
+        {COLLECTION_URL: FakeResponse(200, json.dumps(FORWARD_LOOKING_SAMPLE))}
+    )
+    client = LottoOpenApiClient(session, "test-key")
+
+    results = await client.async_get_results_from("Lotto", date(2026, 7, 1), 10)
+
+    assert [r.draw_date for r in results] == [date(2026, 7, 2), date(2026, 7, 4)]
+    assert session.requested_urls == [COLLECTION_URL]
+
+
+async def test_open_api_get_results_from_falls_back_and_filters_by_date_on_404():
+    """If by-collection-per-game doesn't exist, falls back to the
+    last-results chain (itself trying last-results-per-game first) and
+    filters the wide-net results client-side to only those on/after
+    from_date."""
+    session = RoutedFakeSession(
+        {
+            COLLECTION_URL: FakeResponse(404, "Not Found"),
+            PER_GAME_URL: FakeResponse(200, json.dumps(OPEN_API_MIXED_GAMES_SAMPLE)),
+        }
+    )
+    client = LottoOpenApiClient(session, "test-key")
+
+    # OPEN_API_MIXED_GAMES_SAMPLE's one Lotto draw is dated 2026-07-21.
+    results = await client.async_get_results_from("Lotto", date(2026, 7, 1), 1)
+    assert len(results) == 1
+    assert results[0].draw_date == date(2026, 7, 21)
+
+    results_after = await client.async_get_results_from("Lotto", date(2026, 7, 22), 1)
+    assert results_after == []

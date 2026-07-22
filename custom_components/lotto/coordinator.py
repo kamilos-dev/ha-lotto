@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import EVENT_UPDATED, EVENT_WIN, GAME_EUROJACKPOT, RESULTS_FETCH_SIZE, STATUS_ACTIVE, STATUS_EXPIRED
+from .const import EVENT_UPDATED, EVENT_WIN, GAME_EUROJACKPOT, STATUS_ACTIVE, STATUS_EXPIRED
 from .lotto_api import DrawResult, LottoApiError, LottoOpenApiClient
 from .rules import match_draw
 from .store import LottoStore
@@ -41,19 +41,24 @@ class LottoCoordinator(DataUpdateCoordinator[list[dict]]):
         if not active_coupons:
             return self.store.coupons
 
-        results_by_game: dict[str, list[DrawResult]] = {}
-        for game_type in {c["game_type"] for c in active_coupons}:
-            try:
-                results_by_game[game_type] = await self.api_client.async_get_last_results(
-                    game_type, RESULTS_FETCH_SIZE
-                )
-            except LottoApiError as err:
-                _LOGGER.warning("Nie udało się pobrać wyników dla %s: %s", game_type, err)
-                results_by_game[game_type] = []
-
         any_changed = False
         for coupon in active_coupons:
-            if self._async_check_coupon(coupon, results_by_game.get(coupon["game_type"], [])):
+            first_draw_date = date.fromisoformat(coupon["first_draw_date"])
+            try:
+                # Anchored to the coupon's own (first_draw_date, draws_total)
+                # rather than a shared "last N results" call - avoids
+                # missing older draws that a windowed batch fetch could
+                # crowd out (see async_get_results_from's docstring).
+                results = await self.api_client.async_get_results_from(
+                    coupon["game_type"], first_draw_date, coupon["draws_total"]
+                )
+            except LottoApiError as err:
+                _LOGGER.warning(
+                    "Nie udało się pobrać wyników dla %s: %s", coupon["game_type"], err
+                )
+                continue
+
+            if self._async_check_coupon(coupon, results):
                 any_changed = True
                 await self.store.async_update(coupon)
 

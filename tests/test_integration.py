@@ -24,12 +24,10 @@ async def test_full_flow(mock_setup_panel, mock_unload_panel, hass, ws_connectio
     entry = MockConfigEntry(domain=DOMAIN, data={"api_key": "test-key", "poll_interval_hours": 4})
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.lotto.lotto_api.LottoOpenApiClient.async_get_last_results",
-        new=AsyncMock(return_value=[]),
-    ):
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    # No coupons exist yet at this point, so the first refresh makes no API
+    # calls at all - nothing to mock here.
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     assert entry.state.value == "loaded"
     assert mock_setup_panel.await_count == 1
@@ -86,11 +84,14 @@ async def test_full_flow(mock_setup_panel, mock_unload_panel, hass, ws_connectio
     winning_result = DrawResult(
         game_type="Lotto", draw_date=date(2026, 1, 1), numbers=[1, 2, 3, 4, 5, 6], euro_numbers=[]
     )
-    with patch.object(
-        coordinator.api_client, "async_get_last_results", new=AsyncMock(return_value=[winning_result])
-    ):
+    fetch_mock = AsyncMock(return_value=[winning_result])
+    with patch.object(coordinator.api_client, "async_get_results_from", new=fetch_mock):
         await coordinator.async_refresh()
     await hass.async_block_till_done()
+
+    # Anchored exactly to the coupon's own (first_draw_date, draws_total),
+    # not a shared "last N results" batch call.
+    fetch_mock.assert_awaited_once_with("Lotto", date(2026, 1, 1), 2)
 
     assert len(win_events) == 1
     assert win_events[0]["matched_numbers"] == 6
@@ -160,12 +161,8 @@ async def test_add_coupon_rejects_invalid_numbers(mock_setup_panel, mock_unload_
     entry = MockConfigEntry(domain=DOMAIN, data={"api_key": "test-key", "poll_interval_hours": 4})
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.lotto.lotto_api.LottoOpenApiClient.async_get_last_results",
-        new=AsyncMock(return_value=[]),
-    ):
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     ws.websocket_add_coupon(
         hass,

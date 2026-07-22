@@ -120,15 +120,20 @@ sensor, cykl życia config entry, config flow oraz parsowanie odpowiedzi API.
 
 ## Ograniczenia
 
-- Na każdym cyklu odpytywania sprawdzane jest wyłącznie `RESULTS_FETCH_SIZE`
-  (domyślnie 100) najnowszych losowań — jeśli HA był długo wyłączony i kupon
-  czeka na bardzo stare losowanie, może zostać pominięte (można to zwiększyć
-  w `const.py`). Wartość 100 jest celowo wysoka: potwierdzone na żywo, że
-  część wersji Open API nie filtruje wyników po typie gry po stronie
-  serwera, więc żądanie "Lotto" może zwrócić głównie losowania innych,
-  częściej losowanych gier (np. Keno) — integracja i tak odfiltruje
-  niepasujące typy po swojej stronie, ale przy zbyt małym `size` może w
-  ogóle nie zobaczyć żadnego losowania Lotto/EuroJackpot w danym cyklu.
+- Każdy kupon jest sprawdzany przez zapytanie zakotwiczone na jego własnej
+  `first_draw_date` (endpoint `by-collection-per-game`), a nie przez
+  wspólne "ostatnie N wyników" dla danego typu gry — dzięki temu nawet
+  bardzo stare, jeszcze niesprawdzone losowanie z okresu ważności kuponu nie
+  powinno zostać pominięte. **Uwaga:** ten konkretny endpoint dla
+  oficjalnego Open API nie został jeszcze potwierdzony na żywo (jego
+  istnienie wywnioskowano z tego, że działa identycznie nazwany endpoint na
+  publicznej stronie lotto.pl, prawdopodobnie na tym samym backendzie) — po
+  aktualizacji warto sprawdzić w Ustawienia → System → Logi, czy nie pojawia
+  się wpis o HTTP 404 i przejściu na tryb zapasowy (`last-results`, bez
+  filtrowania po dacie ani zawsze po typie gry po stronie serwera — w takim
+  wypadku bardzo stare losowania mogą jednak zostać pominięte, jeśli inne,
+  częściej losowane gry, np. Keno, zdominują okno `RESULTS_FETCH_SIZE`,
+  domyślnie 100, konfigurowalne w `const.py`).
 - Cała logika (dodawanie/usuwanie/listowanie kuponów, wykrywanie trafień,
   zdarzenie `lotto_win`, powiadomienie, sensor, cykl życia integracji,
   parsowanie odpowiedzi Open API) jest pokryta automatycznymi testami

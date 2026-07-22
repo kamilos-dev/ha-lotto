@@ -19,7 +19,7 @@ from typing import Any
 
 from aiohttp import ClientError, ClientSession
 
-from .const import GAME_EUROJACKPOT
+from .const import GAME_EUROJACKPOT, RESULTS_FETCH_SIZE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -169,6 +169,57 @@ class LottoOpenApiClient:
             )
             url = f"{OPEN_API_BASE_URL}/lotteries/draw-results/last-results"
             status, payload = await _fetch_json(self._session, url, headers, params)
+
+        if status in (401, 403):
+            raise LottoApiAuthError(f"Lotto Open API odrzuciło klucz API (HTTP {status})")
+        if status != 200:
+            raise LottoApiError(f"Lotto Open API zwróciło błąd HTTP {status}")
+
+        items = payload
+        if isinstance(payload, dict):
+            for key in ("items", "results", "content", "data"):
+                if key in payload and isinstance(payload[key], list):
+                    items = payload[key]
+                    break
+
+        return _parse_draw_items(game_type, items or [])
+
+    async def async_get_results_from(
+        self, game_type: str, from_date: date, quantity: int
+    ) -> list[DrawResult]:
+        """Fetch up to `quantity` draws for `game_type` on or after `from_date`.
+
+        Tries `by-collection-per-game` first: confirmed (against the public,
+        unauthenticated lotto.pl site, whose backend the Open API very
+        likely shares - unverified on developers.lotto.pl itself for lack
+        of a live key at the time this was written) to treat `drawDate` as
+        an inclusive lower bound and return draws moving forward from it -
+        exactly what a coupon's (first_draw_date, draws_total) needs.
+        (`by-date-per-game`, a differently-named endpoint, does the
+        opposite - `drawDate` there is an upper bound, walking backward in
+        time - so it's deliberately not used here.)
+
+        If `by-collection-per-game` 404s, falls back to
+        async_get_last_results with a wide net (RESULTS_FETCH_SIZE) and
+        filters client-side by date - this can still miss draws further
+        back than that window reaches if other games draw far more
+        frequently, since that endpoint isn't date-anchored.
+        """
+        headers = {"Secret": self._api_key, "Accept": "application/json"}
+        url = f"{OPEN_API_BASE_URL}/lotteries/draw-results/by-collection-per-game"
+        params = {"gameType": game_type, "drawDate": from_date.isoformat(), "quantity": quantity}
+        status, payload = await _fetch_json(self._session, url, headers, params)
+
+        if status == 404:
+            _LOGGER.warning(
+                "%s zwróciło HTTP 404 - używam last-results z szerokim oknem "
+                "(może pominąć losowania starsze niż to okno)",
+                url,
+            )
+            results = await self.async_get_last_results(
+                game_type, max(quantity, RESULTS_FETCH_SIZE)
+            )
+            return [r for r in results if r.draw_date >= from_date]
 
         if status in (401, 403):
             raise LottoApiAuthError(f"Lotto Open API odrzuciło klucz API (HTTP {status})")
