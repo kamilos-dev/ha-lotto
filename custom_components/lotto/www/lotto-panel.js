@@ -243,8 +243,9 @@ class LottoPanel extends HTMLElement {
         </div>
         <div class="coupon-numbers">${numbers}${euro}</div>
         <div class="coupon-meta">
-          Pierwsze losowanie: ${coupon.first_draw_date} &middot;
-          Pozostałe losowania: ${coupon.draws_remaining}/${coupon.draws_total}
+          <div>Pierwsze losowanie: ${coupon.first_draw_date}</div>
+          <div>Ilość losowań: ${coupon.draws_total}</div>
+          <div>Pozostałe losowania: ${coupon.draws_remaining}</div>
         </div>
         ${checks ? `<ul class="checked-draws">${checks}</ul>` : ""}
       </div>
@@ -473,6 +474,9 @@ class LottoPanel extends HTMLElement {
           margin-top: 4px;
           font-size: 12px;
           color: var(--secondary-text-color, #727272);
+        }
+        .coupon-meta div {
+          line-height: 1.6;
         }
         .checked-draws {
           margin: 8px 0 0 0;
