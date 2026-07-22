@@ -25,7 +25,6 @@ from typing import Any
 from aiohttp import ClientError, ClientSession
 
 from .const import GAME_EUROJACKPOT
-from .rules import GAME_RULES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,86 +108,18 @@ async def _fetch_json(
         raise LottoApiError(f"Błąd komunikacji z {url}: {err}") from err
 
 
-def _parse_open_api_results_field(
-    game_type: str, raw_results: Any
-) -> tuple[list[int], list[int]]:
-    """Split the Open API's `resultsJson` field into (main, euro) numbers.
+def _parse_draw_items(game_type: str, items: list[Any]) -> list[DrawResult]:
+    """Parse the shared item shape used by the Open API and both public
+    lotto.pl endpoints (confirmed identical against a real Open API key:
+    the initial assumption of a flat top-level `resultsJson` field was
+    wrong and produced KeyErrors on every real draw).
 
-    The exact shape isn't nailed down for every game without a live API key,
-    so this handles the two shapes that are known to occur: a flat list of
-    numbers, or a list of number-groups (main numbers, then bonus numbers).
-    """
-    rules = GAME_RULES[game_type]
-
-    if raw_results and isinstance(raw_results[0], list):
-        main = [int(n) for n in raw_results[0]]
-        euro = [int(n) for n in raw_results[1]] if len(raw_results) > 1 else []
-        return main, euro
-
-    flat = [int(n) for n in raw_results]
-    if rules.euro_count and len(flat) == rules.numbers_count + rules.euro_count:
-        return flat[: rules.numbers_count], flat[rules.numbers_count :]
-    return flat, []
-
-
-class LottoOpenApiClient:
-    """Client for the official, key-authenticated Lotto Open API."""
-
-    def __init__(self, session: ClientSession, api_key: str) -> None:
-        self._session = session
-        self._api_key = api_key
-
-    async def async_verify_connection(self) -> None:
-        """Raise LottoApiAuthError/LottoApiError if the key doesn't work."""
-        await self.async_get_last_results(GAME_EUROJACKPOT, size=1)
-
-    async def async_get_last_results(self, game_type: str, size: int = 20) -> list[DrawResult]:
-        url = f"{OPEN_API_BASE_URL}/lotteries/draw-results/last-results"
-        headers = {"Secret": self._api_key, "Accept": "application/json"}
-        params = {
-            "gameType": game_type,
-            "index": 1,
-            "size": size,
-            "sort": "drawDate",
-            "order": "DESC",
-        }
-        status, payload = await _fetch_json(self._session, url, headers, params)
-        if status in (401, 403):
-            raise LottoApiAuthError(f"Lotto Open API odrzuciło klucz API (HTTP {status})")
-        if status != 200:
-            raise LottoApiError(f"Lotto Open API zwróciło błąd HTTP {status}")
-
-        items = payload
-        if isinstance(payload, dict):
-            for key in ("items", "results", "content", "data"):
-                if key in payload and isinstance(payload[key], list):
-                    items = payload[key]
-                    break
-
-        results: list[DrawResult] = []
-        for item in items or []:
-            try:
-                main, euro = _parse_open_api_results_field(game_type, item["resultsJson"])
-                results.append(
-                    DrawResult(
-                        game_type=item.get("gameType", game_type),
-                        draw_date=_parse_draw_date(item["drawDate"]),
-                        numbers=main,
-                        euro_numbers=euro,
-                    )
-                )
-            except (KeyError, ValueError, TypeError) as err:
-                _LOGGER.warning("Nie udało się przetworzyć wyniku losowania %s: %s", item, err)
-
-        return results
-
-
-def _parse_public_api_items(game_type: str, items: list[Any]) -> list[DrawResult]:
-    """Parse the shared item shape used by both public lotto.pl endpoints.
-
-    Each `item` bundles every game drawn together on that date (e.g. Lotto +
-    LottoPlus) under `results`, so the sub-result matching the requested game
-    type is picked out of that list.
+    Each `item` bundles every game drawn at that date/time together (e.g.
+    Lotto + LottoPlus, or EkstraPensja + EkstraPremia) under `results`, so
+    the sub-result matching the requested game type is picked out of that
+    list. Items with no matching sub-result (a different game entirely) are
+    silently skipped rather than logged as errors - that's the normal case
+    whenever a fetch happens to include another game's draws.
     """
     results: list[DrawResult] = []
     for item in items:
@@ -211,6 +142,67 @@ def _parse_public_api_items(game_type: str, items: list[Any]) -> list[DrawResult
         except (KeyError, ValueError, TypeError) as err:
             _LOGGER.warning("Nie udało się przetworzyć wyniku losowania %s: %s", item, err)
     return results
+
+
+class LottoOpenApiClient:
+    """Client for the official, key-authenticated Lotto Open API."""
+
+    def __init__(self, session: ClientSession, api_key: str) -> None:
+        self._session = session
+        self._api_key = api_key
+
+    async def async_verify_connection(self) -> None:
+        """Raise LottoApiAuthError/LottoApiError if the key doesn't work."""
+        await self.async_get_last_results(GAME_EUROJACKPOT, size=1)
+
+    async def async_get_last_results(self, game_type: str, size: int = 20) -> list[DrawResult]:
+        """Fetch the `size` most recent draws for `game_type`.
+
+        Tries `last-results-per-game` first - the per-game-filtered variant.
+        The plain `last-results` endpoint has been observed NOT filtering by
+        `gameType` server-side at all: a request for "Lotto" came back full
+        of unrelated games (EkstraPensja, Keno, Szybkie600, ...), several of
+        which draw many times a day, so a small `size` can easily contain
+        zero Lotto/EuroJackpot draws. If `last-results-per-game` doesn't
+        exist (404) on this API version, this falls back to the unfiltered
+        endpoint and relies on _parse_draw_items' client-side filtering
+        instead - a config entry on that fallback path may need a much
+        larger RESULTS_FETCH_SIZE (const.py) to reliably see its own game's
+        draws.
+        """
+        headers = {"Secret": self._api_key, "Accept": "application/json"}
+        params = {
+            "gameType": game_type,
+            "index": 1,
+            "size": size,
+            "sort": "drawDate",
+            "order": "DESC",
+        }
+
+        url = f"{OPEN_API_BASE_URL}/lotteries/draw-results/last-results-per-game"
+        status, payload = await _fetch_json(self._session, url, headers, params)
+
+        if status == 404:
+            _LOGGER.warning(
+                "%s zwróciło HTTP 404 - używam last-results (bez filtrowania po stronie serwera)",
+                url,
+            )
+            url = f"{OPEN_API_BASE_URL}/lotteries/draw-results/last-results"
+            status, payload = await _fetch_json(self._session, url, headers, params)
+
+        if status in (401, 403):
+            raise LottoApiAuthError(f"Lotto Open API odrzuciło klucz API (HTTP {status})")
+        if status != 200:
+            raise LottoApiError(f"Lotto Open API zwróciło błąd HTTP {status}")
+
+        items = payload
+        if isinstance(payload, dict):
+            for key in ("items", "results", "content", "data"):
+                if key in payload and isinstance(payload[key], list):
+                    items = payload[key]
+                    break
+
+        return _parse_draw_items(game_type, items or [])
 
 
 class LottoPublicApiClient:
@@ -243,7 +235,7 @@ class LottoPublicApiClient:
         if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
             raise LottoApiError("lotto.pl zwróciło nieoczekiwaną odpowiedź (nie JSON?)")
 
-        return _parse_public_api_items(game_type, payload["items"])
+        return _parse_draw_items(game_type, payload["items"])
 
     async def async_get_results_from(
         self, game_type: str, from_date: date, quantity: int
@@ -264,7 +256,7 @@ class LottoPublicApiClient:
         if not isinstance(payload, list):
             raise LottoApiError("lotto.pl zwróciło nieoczekiwaną odpowiedź (nie JSON?)")
 
-        return _parse_public_api_items(game_type, payload)
+        return _parse_draw_items(game_type, payload)
 
 
 def create_client(

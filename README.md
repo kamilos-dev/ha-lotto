@@ -137,10 +137,16 @@ parsowanie odpowiedzi obu dostawców.
 - Przy domyślnym źródle (bez klucza API) każdy kupon jest sprawdzany dokładnie
   od jego `first_draw_date` — więc nawet jeśli Home Assistant był długo
   wyłączony, żadne losowanie z okresu ważności kuponu nie zostanie pominięte.
-  Przy oficjalnym Open API (z kluczem) sprawdzane jest wyłącznie 20
-  najnowszych losowań danego typu gry na każdym cyklu odpytywania — jeśli HA
-  był długo wyłączony i kupon czeka na bardzo stare losowanie, może zostać
-  pominięty (można to zwiększyć w `RESULTS_FETCH_SIZE` w `const.py`).
+  Przy oficjalnym Open API (z kluczem) sprawdzane jest wyłącznie
+  `RESULTS_FETCH_SIZE` (domyślnie 100) najnowszych losowań na każdym cyklu
+  odpytywania — jeśli HA był długo wyłączony i kupon czeka na bardzo stare
+  losowanie, może zostać pominięty (można to zwiększyć w `const.py`). Wartość
+  100 jest celowo wysoka: potwierdzone na żywo, że część wersji Open API nie
+  filtruje wyników po typie gry po stronie serwera, więc żądanie "Lotto"
+  może zwrócić głównie losowania innych, częściej losowanych gier (np.
+  Keno) — integracja i tak odfiltruje niepasujące typy po swojej stronie,
+  ale przy zbyt małym `size` może w ogóle nie zobaczyć żadnego losowania
+  Lotto/EuroJackpot w danym cyklu.
 - Publiczny endpoint lotto.pl (domyślne źródło bez klucza) bywa blokowany
   przez Cloudflare (patrz sekcja 2) — sprawdzone, że to realny problem, nie
   tylko teoretyczne ryzyko. Jeśli w Ustawienia → System → Logi widzisz

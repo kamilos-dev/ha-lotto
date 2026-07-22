@@ -25,11 +25,11 @@ def pytest_configure(config: pytest.Config) -> None:
     target = package_dir / "testing_config" / "custom_components" / "lotto"
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    if target.is_symlink() and target.resolve() == COMPONENT_DIR.resolve():
-        return
-    if target.is_symlink() or target.exists():
-        target.unlink()
-    target.symlink_to(COMPONENT_DIR)
+    already_linked = target.is_symlink() and target.resolve() == COMPONENT_DIR.resolve()
+    if not already_linked:
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        target.symlink_to(COMPONENT_DIR)
 
     # Only relevant when pytest runs against a Home Assistant older than
     # 2024.7 (StaticPathConfig's introduction); no-op on any current
